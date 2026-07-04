@@ -1,4 +1,4 @@
-@echo off
+﻿@echo off
 
 :: ============================================================
 :: 防止双击闪退 —— 检测到外层调用时，用 cmd /k 重开自己
@@ -14,7 +14,7 @@ chcp 65001 >nul
 cd /d "%~dp0"
 
 echo ========================================
-echo   CapsLock 锁定工具 - EXE 打包脚本
+echo   游戏 Capslock 锁定映射工具 - EXE 打包
 echo   含 UAC 提权（管理员权限）
 echo ========================================
 echo.
@@ -88,7 +88,7 @@ echo.
 
 "%PYI_EXE%" ^
     --clean ^
-    "CapsLock锁定工具.spec"
+    "游戏Capslock锁定映射工具.spec"
 
 if %errorlevel% neq 0 (
     echo.
@@ -101,7 +101,7 @@ echo.
 echo ========================================
 echo   打包完成！
 echo.
-echo   EXE 文件位置: dist\CapsLock锁定工具.exe
+echo   EXE 文件位置: dist\游戏Capslock锁定映射工具.exe
 echo.
 echo   特性:
 echo     - 双击运行时自动弹出 UAC 提权窗口

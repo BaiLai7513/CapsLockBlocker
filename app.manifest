@@ -1,9 +1,9 @@
-<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+﻿<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
   <assemblyIdentity version="1.0.0.0"
                     name="CapsLockBlocker"
                     type="win32"/>
-  <description>CapsLock 锁定工具</description>
+  <description>游戏 Capslock 锁定映射工具</description>
 
   <!-- 兼容性设置：支持 Windows 10 / 11 -->
   <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">

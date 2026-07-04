@@ -22,7 +22,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='CapsLock锁定工具',
+    name='游戏Capslock锁定映射工具',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

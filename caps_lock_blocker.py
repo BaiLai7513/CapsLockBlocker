@@ -194,7 +194,7 @@ class CapsLockBlocker:
 
         self.root = tk.Tk()
         self.root.title("游戏 Capslock 锁定映射工具")
-        self.root.geometry("420x600")
+        self.root.geometry("430x700")
         self.root.resizable(False, False)
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
         self.root.report_callback_exception = self._on_error
@@ -205,6 +205,7 @@ class CapsLockBlocker:
         self.root.geometry(f"+{(sw - w) // 2}+{(sh - h) // 2}")
 
         self._build_ui()
+        self._refresh_lock_ui()
         self._install_hook()
         self.root.after(200, self._register_session_notification)
         self._refresh_status()
@@ -279,8 +280,9 @@ class CapsLockBlocker:
 
         ttk.Separator(f, orient="horizontal").pack(fill="x", pady=10)
 
-        self._btn = ttk.Button(f, text="[ 锁定并启用映射 ]", command=self._toggle, width=24)
-        self._btn.pack(pady=(5, 10))
+        self._btn_map = ttk.Button(f, text="[ 锁定并映射 ]", command=self._lock_with_map, width=24)
+        self._btn_only = ttk.Button(f, text="[ 仅锁定 CapsLock ]", command=self._lock_only, width=24)
+        self._btn_unlock = ttk.Button(f, text="[ 解除锁定 ]", command=self._unlock, width=24)
 
         ttk.Label(f, text="锁定后按 CapsLock 即触发上方自定义按键\n解锁后 CapsLock 恢复原功能",
                   font=("Microsoft YaHei", 9), foreground="gray",
@@ -292,7 +294,7 @@ class CapsLockBlocker:
         if not self._hook_id:
             err = k32.GetLastError()
             self._caps_var.set("钩子失败")
-            self._btn.config(state="disabled", text="不可用")
+            self._btn_map.config(state="disabled", text="不可用"); self._btn_only.config(state="disabled", text="不可用")
             msg = {5: "权限不足，右键以管理员运行。", 8: "系统资源不足。"}.get(err, f"错误码 {err}。")
             messagebox.showwarning("游戏 Capslock 锁定映射工具", msg)
 
@@ -320,21 +322,36 @@ class CapsLockBlocker:
                 pass
         return 1
 
-    def _toggle(self):
-        self.is_locked = not self.is_locked
-        self._mapping_enabled = self.is_locked
+    def _lock_with_map(self):
+        self.is_locked = True
+        self._mapping_enabled = True
+        self._refresh_lock_ui()
 
+    def _lock_only(self):
+        self.is_locked = True
+        self._mapping_enabled = False
+        self._refresh_lock_ui()
+
+    def _unlock(self):
+        self.is_locked = False
+        self._mapping_enabled = False
+        self._refresh_lock_ui()
+
+    def _refresh_lock_ui(self):
         if self.is_locked:
             self._lock_var.set("已锁定")
             self._lock_lbl.config(foreground="red")
-            self._btn.config(text="[ 解除锁定 ]")
+            self._btn_map.pack_forget()
+            self._btn_only.pack_forget()
+            self._btn_unlock.pack(pady=(0, 5))
             self.root.title("游戏 Capslock 锁定映射工具 - [已锁定]")
         else:
             self._lock_var.set("已解锁")
             self._lock_lbl.config(foreground="green")
-            self._btn.config(text="[ 锁定并启用映射 ]")
+            self._btn_unlock.pack_forget()
+            self._btn_map.pack(pady=(5, 5))
+            self._btn_only.pack(pady=(0, 5))
             self.root.title("游戏 Capslock 锁定映射工具")
-
         self._refresh_map_ui()
 
     def _capture(self):
@@ -414,46 +431,49 @@ class CapsLockBlocker:
         self._wndproc_ref = None
 
     def _session_wndproc(self, hwnd, msg, wparam, lparam):
-        if msg == WM_WTSSESSION_CHANGE:
-            if wparam == WTS_SESSION_LOCK:
-                self.root.after(0, self._on_lock)
-            elif wparam == WTS_SESSION_UNLOCK:
-                self.root.after(0, self._on_unlock)
+        try:
+            if msg == WM_WTSSESSION_CHANGE:
+                if wparam == WTS_SESSION_LOCK:
+                    self.root.after(0, self._on_lock)
+                elif wparam == WTS_SESSION_UNLOCK:
+                    self.root.after(0, self._on_unlock)
+        except Exception:
+            pass
         if self._orig_wndproc is not None:
             return ctypes.cast(self._orig_wndproc, WNDPROC)(hwnd, msg, wparam, lparam)
         return u32.DefWindowProcW(hwnd, msg, wparam, lparam)
 
     def _on_lock(self):
-        if self._is_ws_locked:
-            return
-        self._is_ws_locked = True
-        self._prev_lock_state = self.is_locked
-        if self.is_locked:
-            self.is_locked = False
-            self._mapping_enabled = False
-            self._lock_var.set("已解锁")
-            self._lock_lbl.config(foreground="green")
-            self._btn.config(text="[ 锁定并启用映射 ]")
-        self._screen_var.set("锁屏中")
-        self._screen_lbl.config(foreground="orange")
-        self.root.title("游戏 Capslock 锁定映射工具 - [锁屏中]")
+        try:
+            if self._is_ws_locked:
+                return
+            self._is_ws_locked = True
+            self._prev_lock_state = self.is_locked
+            if self.is_locked:
+                self.is_locked = False
+                self._mapping_enabled = False
+            self._screen_var.set("锁屏中")
+            self._screen_lbl.config(foreground="orange")
+            self.root.title("游戏 Capslock 锁定映射工具 - [锁屏中]")
+        except Exception:
+            pass
 
     def _on_unlock(self):
-        if not self._is_ws_locked:
-            return
-        self._is_ws_locked = False
-        if self._prev_lock_state:
-            self.is_locked = True
-            self._mapping_enabled = True
-            self._lock_var.set("已锁定")
-            self._lock_lbl.config(foreground="red")
-            self._btn.config(text="[ 解除锁定 ]")
-        self._prev_lock_state = False
-        self._screen_var.set("活跃")
-        self._screen_lbl.config(foreground="gray")
-        self.root.title(
-            "游戏 Capslock 锁定映射工具 - [已锁定]" if self.is_locked else "游戏 Capslock 锁定映射工具")
-        self._refresh_map_ui()
+        try:
+            if not self._is_ws_locked:
+                return
+            self._is_ws_locked = False
+            if self._prev_lock_state:
+                self.is_locked = True
+                self._mapping_enabled = True
+            self._prev_lock_state = False
+            self._screen_var.set("活跃")
+            self._screen_lbl.config(foreground="gray")
+            self.root.title(
+                "游戏 Capslock 锁定映射工具 - [已锁定]" if self.is_locked else "游戏 Capslock 锁定映射工具")
+            self.root.after(100, self._refresh_lock_ui)
+        except Exception:
+            pass
 
     def _on_close(self):
         if self._hook_id:

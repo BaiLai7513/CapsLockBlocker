@@ -1,113 +1,124 @@
-﻿@echo off
-
-:: ============================================================
-:: 防止双击闪退 —— 检测到外层调用时，用 cmd /k 重开自己
-:: ============================================================
-if not defined BUILD_EXE_INNER (
-    set BUILD_EXE_INNER=1
-    start "" /wait cmd /k "%~f0" %*
-    exit /b
-)
-
-title CapsLock 打包工具
-chcp 65001 >nul
+@echo off
+setlocal EnableExtensions
 cd /d "%~dp0"
+title CapsLock Mapper Builder
 
 echo ========================================
-echo   游戏 Capslock 锁定映射工具 - EXE 打包
-echo   含 UAC 提权（管理员权限）
+echo   CapsLock Mapper - build EXE
 echo ========================================
 echo.
 
-:: ---- 自动查找 Python（优先 venv，其次 PATH） ----
-set PYTHON_EXE=
-set PIP_EXE=
+set "PY_EXE="
+set "PY_ARGS="
+set "NEED_PYI="
 
-:: 候选路径（从近到远）
-if exist "..\venv\Scripts\python.exe" (
-    set PYTHON_EXE=..\venv\Scripts\python.exe
-    set PIP_EXE=..\venv\Scripts\pip.exe
+call :probe "%~dp0venv\Scripts\python.exe" ""
+call :probe "%~dp0.venv\Scripts\python.exe" ""
+call :probe "py" "-3.11"
+call :probe "py" "-3.12"
+call :probe "py" "-3.13"
+call :probe "py" "-3.10"
+call :probe "py" "-3.14"
+call :probe "py" "-3"
+call :probe "python" ""
+
+if not defined PY_EXE (
+    call :probe_any "%~dp0venv\Scripts\python.exe" ""
+    call :probe_any "%~dp0.venv\Scripts\python.exe" ""
+    call :probe_any "py" "-3.11"
+    call :probe_any "py" "-3.12"
+    call :probe_any "py" "-3.13"
+    call :probe_any "py" "-3.10"
+    call :probe_any "py" "-3.14"
+    call :probe_any "py" "-3"
+    call :probe_any "python" ""
 )
-if not defined PYTHON_EXE if exist "%USERPROFILE%\venv\Scripts\python.exe" (
-    set PYTHON_EXE=%USERPROFILE%\venv\Scripts\python.exe
-    set PIP_EXE=%USERPROFILE%\venv\Scripts\pip.exe
-)
-:: 回退到系统 PATH
-if not defined PYTHON_EXE (
-    where python >nul 2>&1 && set PYTHON_EXE=python
-)
-if not defined PIP_EXE (
-    where pip >nul 2>&1 && set PIP_EXE=pip
-)
-if not defined PYTHON_EXE (
-    echo [错误] 未找到 Python，请先安装 Python 3.6+
+
+if not defined PY_EXE goto :no_python
+
+echo [1/3] Python: %PY_EXE% %PY_ARGS%
+"%PY_EXE%" %PY_ARGS% -c "import sys, tkinter" >nul 2>&1
+if errorlevel 1 (
+    echo [ERROR] tkinter is missing in this Python installation.
     pause
     exit /b 1
 )
 
-echo [1/3] 检查 Python 环境...
-"%PYTHON_EXE%" --version >nul 2>&1
-if %errorlevel% neq 0 (
-    echo [错误] Python 执行失败
-    pause
-    exit /b 1
-)
-echo         Python 环境正常  [%PYTHON_EXE%]
-
-echo [2/3] 检查 PyInstaller...
-"%PIP_EXE%" show pyinstaller >nul 2>&1
-if %errorlevel% neq 0 (
-    echo         PyInstaller 未安装，正在安装...
-    "%PIP_EXE%" install pyinstaller -i https://pypi.org/simple --trusted-host pypi.org --trusted-host files.pythonhosted.org
-    if %errorlevel% neq 0 (
-        echo [错误] PyInstaller 安装失败，请检查网络连接
+if defined NEED_PYI (
+    echo [2/3] PyInstaller not found; installing...
+    "%PY_EXE%" %PY_ARGS% -m pip install --upgrade pyinstaller
+    if errorlevel 1 (
+        echo [ERROR] PyInstaller installation failed.
+        echo Run manually:
+        echo   "%PY_EXE%" %PY_ARGS% -m pip install pyinstaller
         pause
         exit /b 1
     )
 ) else (
-    echo         PyInstaller 已安装
+    echo [2/3] PyInstaller OK
 )
 
-:: 找到 pyinstaller.exe 的位置
-for /f "delims=" %%i in ('"%PIP_EXE%" show pyinstaller ^| findstr "Location:"') do set _PYI_LOC=%%i
-set _PYI_LOC=%_PYI_LOC:Location: =%
-set PYI_EXE=%_PYI_LOC%\pyinstaller.exe
-if not exist "%PYI_EXE%" set PYI_EXE=%_PYI_LOC%\Scripts\pyinstaller.exe
-if not exist "%PYI_EXE%" (
-    where pyinstaller >nul 2>&1 && set PYI_EXE=pyinstaller
+set "SPEC_FILE="
+for %%F in ("%~dp0*.spec") do if not defined SPEC_FILE set "SPEC_FILE=%%~fF"
+if not defined SPEC_FILE (
+    echo [ERROR] No .spec file found next to this script.
+    pause
+    exit /b 1
 )
 
-echo [3/3] 开始打包（含 UAC manifest）...
-echo.
-echo         打包参数说明:
-echo           --onefile   : 打包为单个 EXE 文件
-echo           --windowed  : 不显示控制台窗口（GUI 模式）
-echo           --manifest  : 嵌入 UAC requireAdministrator（在 spec 中配置）
-echo           --clean     : 清理旧构建
-echo.
-
-"%PYI_EXE%" ^
-    --clean ^
-    "游戏Capslock锁定映射工具.spec"
-
-if %errorlevel% neq 0 (
+echo [3/3] Building onedir package...
+if exist "dist" rmdir /s /q "dist"
+"%PY_EXE%" %PY_ARGS% -m PyInstaller --clean --noconfirm "%SPEC_FILE%"
+if errorlevel 1 (
     echo.
-    echo [错误] 打包失败，请检查上方错误信息
+    echo [ERROR] Build failed.
+    pause
+    exit /b 1
+)
+
+set "OUT_EXE="
+for /r "%~dp0dist" %%I in (*.exe) do if not defined OUT_EXE set "OUT_EXE=%%~fI"
+if not defined OUT_EXE (
+    echo [ERROR] No EXE found under dist after build.
     pause
     exit /b 1
 )
 
 echo.
 echo ========================================
-echo   打包完成！
+echo   Build complete
+echo   EXE: %OUT_EXE%
+for %%I in ("%OUT_EXE%") do echo   Size: %%~zI bytes
 echo.
-echo   EXE 文件位置: dist\游戏Capslock锁定映射工具.exe
-echo.
-echo   特性:
-echo     - 双击运行时自动弹出 UAC 提权窗口
-echo     - 获得管理员权限后，键盘钩子更稳定
+echo   Keep the whole dist\GameCapslockMapper folder together.
+echo   Do not move the exe out of its _internal folder.
 echo ========================================
 echo.
-echo 提示: 如果杀毒软件报毒，请将 dist 目录加入白名单
-echo.
+echo Tip: add the whole GameCapslockMapper folder to your antivirus whitelist.
 pause
+exit /b 0
+
+:probe
+if defined PY_EXE exit /b 0
+"%~1" %~2 -c "import sys, tkinter" >nul 2>&1
+if errorlevel 1 exit /b 0
+"%~1" %~2 -m pip show pyinstaller >nul 2>&1
+if errorlevel 1 exit /b 0
+set "PY_EXE=%~1"
+set "PY_ARGS=%~2"
+exit /b 0
+
+:probe_any
+if defined PY_EXE exit /b 0
+"%~1" %~2 -c "import sys, tkinter" >nul 2>&1
+if errorlevel 1 exit /b 0
+set "PY_EXE=%~1"
+set "PY_ARGS=%~2"
+set "NEED_PYI=1"
+exit /b 0
+
+:no_python
+echo [ERROR] No Python 3 with tkinter found.
+echo Install Python 3.8+ and enable "Add Python to PATH".
+pause
+exit /b 1
